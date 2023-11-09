@@ -178,10 +178,24 @@ plot_x_method<-prevision%>%
 print(plot_x_method)
 error_seventh_method <- rmsle(prevision$tot_sales, prevision$yhat)
 
-#------------g) eight method: Forecast tslm . Error:  -----####
+#------------g) eight method: Forecast tslm . INCOMPLETE                        ####
 
 train_ts <- ts(train_df)
 fit_train_ts <- tslm(sales ~ family_encoded, data=train_ts)
 fcast <- forecast(fit_train_ts, newdata = test_df)
 
+#------------g) nineth method: Lags . Error: 0.50                               -----####
+train <- train.original
+train <- train %>% arrange(family, store_nbr, date)
+train <- train %>% group_by(family) %>% mutate(lag_14 = lag(sales, 14))
+train <- train %>% group_by(family) %>% mutate(lag_21 = lag(sales, 21))
 
+test_df<- train %>% filter(date<="2017-08-15" & date>"2017-08-01")
+train_df <- train %>% filter(date<="2017-08-01")
+
+model <- lm(sales ~ family + onpromotion + lag_14 + lag_21, data=train_df)
+
+prevision <- predict(model, newdata = test_df) %>% as.data.frame()
+prevision <- test_df %>% cbind(prevision)
+
+error_nineth_method <- rmsle(prevision$sales, prevision$`.`)
