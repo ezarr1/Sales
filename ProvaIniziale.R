@@ -73,10 +73,10 @@ error_third_method <- rmsle(prevision_3$tot_sales, prevision_3$tot_sales_previsi
 #-------------d) fourth method  Linear regression ------------------------------------------####
 # 
 
-model <- lm(tot_sales ~ date, data = train)
-prevision_4 <- predict(model, newdata = test2) %>% as.data.frame()
+model <- lm(tot_sales ~ family, data = train_family)
+prevision_4 <- predict(model, newdata = test_family) %>% as.data.frame()
 
-prevision_4 <-  cbind(test$date, prevision_4$., test$tot_sales ) %>% as.data.frame()
+prevision_4 <-  cbind(test_family$date, prevision_4$., test_family$tot_sales ) %>% as.data.frame()
 prevision_4 <- prevision_4 %>% rename(date = V1, tot_sales_prevision = V2, tot_sales = V3)
 prevision_4 <- prevision_4 %>% mutate(date = as.Date(date))
 
