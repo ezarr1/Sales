@@ -160,15 +160,15 @@ error_sixt_method <- rmsle(prevision$sales,prevision$.)
 train_full_summarised <- train_full_summarised %>% rename(ds = date, y = tot_sales) 
 train_prophet <- prophet(train_full_summarised)
 
-forecast <- make_future_dataframe(train_prophet, periods = 14)  # date + 14 giorni 
+forecasting <- make_future_dataframe(train_prophet, periods = 14)  # date + 14 giorni 
 
-forecast <- predict(train_prophet, forecast)
-tail(forecast[c('ds', 'yhat', 'yhat_lower', 'yhat_upper')],14)
+forecasting <- predict(train_prophet, forecasting)
+tail(forecasting[c('ds', 'yhat', 'yhat_lower', 'yhat_upper')],14)
 
 # plot(train_prophet, forecast)
 # prophet_plot_components(train_prophet, forecast)
 
-prevision <- left_join(test_full_summarised,forecast %>% select(ds,yhat), by = c('date'='ds' ))
+prevision <- left_join(test_full_summarised,forecasting %>% select(ds,yhat), by = c('date'='ds' ))
 
 plot_x_method<-prevision%>%
   ggplot(aes(x = date , y = yhat)) +
@@ -177,3 +177,11 @@ plot_x_method<-prevision%>%
   scale_y_continuous(labels = scales::comma_format(scale = 1e-3, big.mark = ","))
 print(plot_x_method)
 error_seventh_method <- rmsle(prevision$tot_sales, prevision$yhat)
+
+#------------g) eight method: Forecast tslm . Error:  -----####
+
+train_ts <- ts(train_df)
+fit_train_ts <- tslm(sales ~ family_encoded, data=train_ts)
+fcast <- forecast(fit_train_ts, newdata = test_df)
+
+
