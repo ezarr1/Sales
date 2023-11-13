@@ -267,7 +267,7 @@ for(fam in dist_families$family){
 error_10th_method <- mean(result$errore)
 message("10th method: One prophet model for each family. \n Mean error: ", error_10th_method, "\n The minimun error is: ", min(result$errore), "\n The maximun error is: ", max(result$errore) )
 
-#-------- 11th method: Linear Regression. Dataset: Train.  Mean error: 0.270             ------------------------------------------####
+#-------- 11th method: Linear Regression. Dataset: Train.  Mean error: 0.24              ------------------------------------------####
 train <- train.original
 train <- train %>% group_by(date, family) %>% summarise(sales= sum(sales), onpromotion=sum(onpromotion)) %>% ungroup()
 train <- train %>%
@@ -282,24 +282,6 @@ train <- train %>% group_by(family) %>% mutate(lag_21 = lag(sales, 21)) %>% ungr
 
 test_df<- train %>% filter(date<="2017-08-15" & date>"2017-08-01")
 train_df <- train %>% filter(date<="2017-08-01")
-
-dist_families <- train_df %>% select(family) %>% distinct()
-result_df <- data.frame()
-message("Prophet is running to predict the products that might be on promotion based on their family. It takes about 2min to process")
-for(fam in dist_families$family){
-  train_fam <- train_df %>% filter(family == fam) 
-  test_fam <- test_df %>% filter(family == fam)
-  #We change the tot_promotion column into predicted values insted of "known" ones
-  train_prophet <- train_fam %>% rename(ds=date, y=onpromotion)
-  train_prophet <- prophet(train_prophet)
-  forecasting <- make_future_dataframe(train_prophet, periods = 14)  # date + 14 giorni 
-  forecasting <- predict(train_prophet, forecasting)
-  test_fam <- left_join(test_fam,forecasting %>% select(ds,yhat), by = c("date"='ds'))
-  #rmsle(test_fam$onpromotion, test_fam$yhat)
-  test_fam <- test_fam %>% select(-onpromotion) %>% rename(onpromotion = yhat)
-  result_df <- bind_rows(result_df, test_fam)
-}
-test_df <- result_df %>% mutate(onpromotion= ifelse(onpromotion<0, 0, onpromotion))
 
 result <- dist_families %>% mutate(errore =0)
 for(fam in dist_families$family){
@@ -389,19 +371,22 @@ train <- train.original
 train <- train %>% arrange(family, store_nbr, date)
 train <- train %>% group_by(family, store_nbr) %>% mutate(lag_14 = lag(sales, 14)) %>% ungroup()
 train <- train %>% group_by(family, store_nbr) %>% mutate(lag_21 = lag(sales, 21)) %>% ungroup()
+train <- train %>%
+  mutate(dayofweek = weekdays(train$date),
+         monthofyear = months(train$date),
+         year = year(train$date),
+         day= as.numeric(format(train$date, format = "%d")),
+         payingDays = case_when(
+           str_detect(monthofyear, "novembre|aprile|giugno|settembre") & day == 30 ~ 1,
+           str_detect(monthofyear, "febbraio") & day == 28 ~ 1,
+           day==31 ~ 1,
+           TRUE ~ 0   
+         )
+  )
 
 test_df<- train %>% filter(date<="2017-08-15" & date>"2017-08-01")
 train_df <- train %>% filter(date<="2017-08-01")
-
-model <- lm(onpromotion ~ family + store_nbr, data=train_df)
-
-prevision <- predict(model, newdata = test_df) %>% as.data.frame()
-test_df <- test_df %>% cbind(prevision) %>% 
-  select(-onpromotion) %>%
-  rename(onpromotion = '.') %>%
-  mutate(onpromotion= ifelse(onpromotion<0, 0, round(onpromotion,0)))
-
-#-------- 13th method: Linear regression with Lags . Error: 0.86                         -----####
+#-------- 13th method: Linear regression with Lags . Error: 0.82                         -----####
 
 
 model <- lm(sales ~ family + store_nbr + onpromotion + lag_14 + lag_21, data=train_df)
@@ -414,7 +399,7 @@ prevision <- prevision %>% mutate(p= ifelse(p<0, 0, p))
 error_13th_method <- rmsle(prevision$sales, prevision$p)
 message('13th method: Linear regression with Lags. Error: ',error_13th_method)
 
-#-------- 14th method: One model for each family that consideres store_nbr. Error: 0.51  -----####
+#-------- 14th method: One model for each family that consideres store_nbr. Error: 0.47  -----####
 dist_families <- train %>% select(family) %>% distinct()
 
 result <- dist_families %>% mutate(errore =0)
@@ -436,7 +421,7 @@ error_14th_method <- mean(result$errore)
 message("14th method: One linear model for each family that considers onpromotion, store_nbr and lags. \n Mean error: ", error_14th_method, "\n The minimun error is: ", min(result$errore), "\n The maximun error is: ", max(result$errore) )
 
 
-#-------- 15th method: One model for each store_nbr that consideres family. Error: 0.53  -----####
+#-------- 15th method: One model for each store_nbr that consideres family. Error: 0.46  -----####
 dist_store <- train %>% select(store_nbr) %>% distinct()
 
 result <- dist_store %>% mutate(errore =0)
@@ -491,7 +476,8 @@ for (name in family_store_names) {
 error_16th_method <- mean(result$errore)
 message("16th method: One linear model for each store and family that considers lags. \n Mean error: ", error_16th_method, "\n The minimun error is: ", min(result$errore), "\n The maximun error is: ", max(result$errore) )
 
-#-------- 17th method: One lm for each store and family, + $oil + holidays. Error: 0.40  -----####
+#-------- 17th method: One lm for each store and family, + $oil + holidays. Error: 0.37  -----####
+
 test_df <- left_join(test_df,forecasting_oil %>% select(ds,yhat), by = c("date"='ds'))
 test_df <- test_df %>% rename(oil_price = yhat)
 test_df <- test_df %>% left_join(holiday %>% select(date, flag_holiday), by='date') 
@@ -502,10 +488,20 @@ train_df <- train_df %>% fill(oil_price)
 train_df <- train_df %>% left_join(holiday %>% select(date, flag_holiday), by='date') 
 train_df <- train_df %>% mutate(flag_holiday= ifelse(is.na(flag_holiday), 0, flag_holiday))
 
+# options(repr.plot.width = 60, repr.plot.height = 30)
+# c1 <- cor(train_df %>%
+#             select(sales, onpromotion, year, oil_price, flag_holiday, payingDays, day))
+# corrplot(c1,
+#          method = c('color'),
+#          addCoef.col = "black",
+#          addgrid.col = "black",
+#          tl.col = "black",
+#          order = 'hclust')
+
 
 #Function to fit a linear model for a specific family and store combination
 fit_lm <- function(subset_df) {
-  model <- lm(sales ~  lag_14 + lag_21 + onpromotion + oil_price + flag_holiday, data = subset_df)
+  model <- lm(sales ~  lag_14 + lag_21 + onpromotion + oil_price + flag_holiday + payingDays, data = subset_df)
   return(list(model = model))
 }
 
@@ -527,7 +523,6 @@ for (name in family_store_names) {
     cbind(subset_test_df) %>%
     rename(p = '.') %>%
     mutate(p = ifelse(p < 0, 0, p))
-  
   result$errore[result$store_nbr== store & result$family== fam]  <-  rmsle(predictions$sales, predictions$p)
 }
 error_17th_method <- mean(result$errore)
