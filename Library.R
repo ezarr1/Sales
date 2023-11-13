@@ -18,3 +18,4 @@ library(caret)
 
 #install.packages('fpp2')
 library(fpp2)
+library(purrr)
