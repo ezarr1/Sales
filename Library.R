@@ -15,6 +15,7 @@ library(prophet)
 library(xgboost)
 #install.packages('caret')
 library(caret)
+library(stringr)
 
 #install.packages('fpp2')
 library(fpp2)
