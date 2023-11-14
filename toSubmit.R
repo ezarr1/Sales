@@ -7,11 +7,12 @@ transactions.original = read_csv('Data/transactions.csv')
 transactions <- transactions.original
 train.original = read_csv('Data/train.csv')
 train.original <- train.original %>% filter(date>"2015-01-01")
+stores.original <- read_csv("Data/stores.csv")
 
 #Cleaning the oil DF / giving NAs the values of the following day 
 oil <- oil.original
 oil <- oil %>% rename(oil_price= dcoilwtico)
-oil <- oil %>%  fill(oil_price)
+oil <- oil %>%  fill(oil_price, .direction = "down")
 oil[1,2] <- oil[2,2] 
 
 #Cleaning the holiday DF
@@ -23,11 +24,19 @@ holiday <- holiday %>% mutate(flag_holiday= case_when(
   type=="Event" ~ 1,
   type=="Bridge" ~ 1,
   type=="Work Day" ~ 0,
-  type=="Additional" ~ 2
+  type=="Additional" ~ 1
 ))
-holiday <- holiday %>% group_by(date) %>% summarise(flag_holiday= ifelse(1 %in% flag_holiday, 1, ifelse(2 %in% flag_holiday,2,0)))
+holiday <- holiday %>% filter(type!="Work Day" & flag_holiday != 0) %>% select(-description, -type) %>% distinct()
+holiday_locals <- holiday %>% filter(locale== "Local")
+holiday_regional <- holiday %>% filter(locale== "Regional")
+holiday_national <- holiday %>% filter(locale== "National")
 
-
+stores_with_holidays <- stores.original %>% select(store_nbr, city, state)
+stores_with_holidays <- stores_with_holidays %>% mutate(nation = "Ecuador")
+stores_with_holidays_nat <- stores_with_holidays %>% left_join(holiday_national %>% select(date, locale_name, flag_holiday), by=c("nation"= "locale_name"))
+stores_with_holidays_reg <- stores_with_holidays %>% left_join(holiday_regional %>% select(date, locale_name, flag_holiday), by=c("state"= "locale_name"))
+stores_with_holidays_loc <- stores_with_holidays %>% left_join(holiday_locals %>% select(date, locale_name, flag_holiday), by=c("city"= "locale_name"))
+stores_with_holidays <- rbind(stores_with_holidays_nat, stores_with_holidays_reg, stores_with_holidays_loc) %>% distinct()
 
 train <- train.original
 train <- train %>% arrange(family, store_nbr, date)
@@ -45,29 +54,15 @@ train <- train %>%
            TRUE ~ 0   
          )
   )
-train <- train %>% left_join(holiday %>% select(date, flag_holiday), by='date') 
+train <- train %>% left_join(stores_with_holidays %>% select(date, store_nbr, flag_holiday), by=c('date', 'store_nbr')) 
 train <- train %>% mutate(flag_holiday= ifelse(is.na(flag_holiday), 0, flag_holiday))
 
 test_df<- train %>% filter(date<="2017-08-15" & date>"2017-08-01")
 train_df <- train %>% filter(date<="2017-08-01")
 
-train_df <- train_df %>% left_join(oil, by='date')
-train_df <- train_df %>%  fill(oil_price)
-test_df <- test_df %>% mutate(oil_price=0)
+train_df <- train_df %>% left_join(oil, by='date') %>%  fill(oil_price, .direction = "down")
+test_df <- test_df %>% left_join(oil, by='date') %>%  fill(oil_price, .direction = "down")
 
-oil_test <- test_df %>% select(date) %>% distinct() %>% left_join(oil, by="date")
-oil_test  <- oil_test %>% fill(oil_price)
-oil_train <- oil %>% filter(date<="2017-08-01")
-
-#We change the oil_price column into predicted values insted of "known" ones
-train_prophet <- oil_train %>% rename(ds=date, y=oil_price)
-train_prophet <- prophet(train_prophet, daily.seasonality=TRUE)
-forecasting <- make_future_dataframe(train_prophet, periods = 14)  # date + 14 giorni 
-forecasting <- predict(train_prophet, forecasting)
-oil_test <- left_join(oil_test,forecasting %>% select(ds,yhat), by = c("date"='ds'))
-#rmsle(oil_test$oil_price, oil_test$yhat) #0.040
-oil_test <- oil_test %>% select(-oil_price) %>% rename(oil_price = yhat)
-test_df <- test_df %>% select(-oil_price) %>% left_join(oil_test, by="date")
 
 # options(repr.plot.width = 60, repr.plot.height = 30)
 # c1 <- cor(train_df %>%
@@ -82,7 +77,7 @@ test_df <- test_df %>% select(-oil_price) %>% left_join(oil_test, by="date")
 
 #Function to fit a linear model for a specific family and store combination
 fit_lm <- function(subset_df) {
-  model <- lm(sales ~  lag_14 + lag_21 + onpromotion + oil_price + flag_holiday + payingDays, data = subset_df)
+  model <- lm(sales ~  lag_14 + lag_21 + onpromotion + oil_price + flag_holiday, data = subset_df)
   return(list(model = model))
 }
 
@@ -108,7 +103,7 @@ for (name in family_store_names) {
 }
 
 error_17th_method <- rmsle(prevision$sales, prevision$p)
-message("17th method: One linear model for each store and family that considers lags, oil price, and holidays. \n Mean error: ", error_17th_method, "\n The minimun error is: ", min(result$errore), "\n The maximun error is: ", max(result$errore) )
+message("17th method: One linear model for each store and family that considers lags, oil price, and holidays. \n Error: ", error_17th_method)
 
 
 
