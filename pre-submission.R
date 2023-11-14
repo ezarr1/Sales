@@ -77,7 +77,7 @@ test_df <- test_df %>% left_join(oil, by='date') %>%  fill(oil_price, .direction
 
 #Function to fit a linear model for a specific family and store combination
 fit_lm <- function(subset_df) {
-  model <- lm(sales ~  lag_14 + lag_21 + onpromotion + oil_price + flag_holiday, data = subset_df)
+  model <- lm(sales ~  lag_14 + lag_21 + onpromotion + oil_price + flag_holiday + payingDays, data = subset_df)
   return(list(model = model))
 }
 
@@ -86,10 +86,12 @@ models <- lapply(split(train_df, train_df[c('family', 'store_nbr')]), fit_lm)
 
 predictions <- list()# Iterate over the models and make predictions on the test data
 
-family_store_names <- names(models)
-dist_store_fam <- train %>% select(family, store_nbr) %>% distinct()
+#family_store_names <- names(models)
+family_store_names <- train_df %>% group_by(family,store_nbr) %>% summarise(sales = sum(sales)) %>% filter(sales !=0) %>% ungroup()
+family_store_names <- family_store_names %>% mutate(combination = paste0(family,'.',store_nbr))
+family_store_names <- family_store_names %>% select(combination) %>% distinct()
 prevision <- data.frame(sales=numeric(0), p=numeric(0))
-for (name in family_store_names) {  
+for (name in family_store_names$combination) {  
   fam <- strsplit(name, "\\.")[[1]][1]
   store <- strsplit(name, "\\.")[[1]][2]    # Filter the test data for the specific family and store  
   store=as.numeric(store)
@@ -101,9 +103,15 @@ for (name in family_store_names) {
     mutate(p = ifelse(p < 0, 0, p))
   prevision <- prevision %>% rbind(predictions %>% select(sales, p))
 }
+family_store_withoutSales <- train_df %>% group_by(family,store_nbr) %>% summarise(sales = sum(sales)) %>% filter(sales ==0) %>% ungroup()
+family_store_withoutSales <- family_store_withoutSales %>% mutate(p=0) 
+date_range <- seq(as.Date("2017-08-02"), as.Date("2017-08-15"), by = "1 day")
+family_store_withoutSales <- family_store_withoutSales %>% crossing(date = date_range)
+prevision <- prevision %>% rbind(family_store_withoutSales %>% select(sales, p))
 
 error_17th_method <- rmsle(prevision$sales, prevision$p)
 message("17th method: One linear model for each store and family that considers lags, oil price, and holidays. \n Error: ", error_17th_method)
+
 
 
 
